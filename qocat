@@ -21,26 +21,14 @@
 
 import sys
 import os
-import stk
-from cxcdm import *
 
 import ciao_contrib.logger_wrapper as lw
 
-toolname = "summarize_chandra_dataset"
-version = "30 July 2013"
+toolname = "qocat"
+version = "03 Feb 2016"
 
 lw.initialize_logger(toolname, verbose=1)
 v1 = lw.make_verbose_level(toolname, 1)
-
-
-def get_keyword_if_exists( block, keylist, key ):
-    """
-    Get keyword value if it exists, returns None if not found.
-    """
-    if key not in keylist:
-        return None
-    d,v = dmKeyRead( block, key )
-    return v
 
 
 
@@ -48,8 +36,7 @@ def fmt_keyvalue_pair( key, keyvals, name, post="", eqls = ":" ):
     if key not in keyvals or keyvals[key] is None:
         return ""
     
-    return "  {0:>20s} {1} {2} {3}\n".format( name, eqls, keyvals[key], post )
-
+    return "  {0:>22s} {1} {2} {3}\n".format( name, eqls, keyvals[key], post )
 
 
 def get_summary( retvals, info_level ):
@@ -74,10 +61,22 @@ def get_summary( retvals, info_level ):
         retstr += fmt_keyvalue_pair( "cycle", retvals, "Interleaved Exposure")
     if info_level.object:
         retstr += fmt_keyvalue_pair( "object", retvals, "Object Name")
-    if info_level.title:
-        retstr += fmt_keyvalue_pair( "title", retvals, "Proposal Title")
+    if "pi_name" in retvals:
+        retstr += fmt_keyvalue_pair( "pi_name", retvals, "Principal Investigator")
     if info_level.observer:
         retstr += fmt_keyvalue_pair( "observer", retvals, "Observer Name")
+    if info_level.title:
+        retstr += fmt_keyvalue_pair( "title", retvals, "Proposal Title")
+    if "pr_num" in retvals:
+        retstr += fmt_keyvalue_pair( "pr_num", retvals, "Proposal Number")
+    if info_level.seqn:
+        retstr += fmt_keyvalue_pair( "seq_num", retvals, "Observation Sequence")
+    if "type" in retvals:
+        retstr += fmt_keyvalue_pair( "type", retvals, "Observation Type")
+    if "obs_cycle" in retvals:
+        retstr += fmt_keyvalue_pair( "obs_cycle", retvals, "Observation Cycle")
+    if "category" in retvals:
+        retstr += fmt_keyvalue_pair( "category", retvals, "Observation Category")
     if info_level.dateobs:
         retstr += fmt_keyvalue_pair( "date-obs", retvals, "Observation Date")
     if info_level.livetime:
@@ -98,36 +97,172 @@ def get_summary( retvals, info_level ):
         retstr += fmt_keyvalue_pair( "revision", retvals, "Processing Revision")
     if info_level.creator:
         retstr += fmt_keyvalue_pair( "creator", retvals, "Created by tool" )
-    if info_level.seqn:
-        retstr += fmt_keyvalue_pair( "seq_num", retvals, "Observation Sequence")
-    
     if info_level.nom:
         retstr += fmt_keyvalue_pair( "nom", retvals, "Nominal Pointing", post="[deg]")
-
     if info_level.point:
         retstr += fmt_keyvalue_pair( "pnt", retvals, "Mean Optical Axis", post="[deg]")
-
     if info_level.targ:
         retstr += fmt_keyvalue_pair( "targ", retvals, "Target Location", post="[deg]")
-    
     if info_level.sim:
         retstr += fmt_keyvalue_pair( "sim", retvals, "SIM Location", post="[mm]")
-    
     if info_level.soff:
         retstr += fmt_keyvalue_pair( "soff", retvals, "Mean SIM offsets", post="[mm, mm, deg]")
+    if "public_avail" in retvals:
+        retstr += fmt_keyvalue_pair( "public_avail", retvals, "Publically Available")
+
+    if "proposal_text" in retvals:
+        retstr += fmt_keyvalue_pair( "proposal_text", retvals, "Proposal Abstract")
 
     return retstr
 
 
 
-
-def get_chandra_config( block, info_level ):
+def get_keys_from_file( infile, getlist ):
+    """
     
     """
-    telescop, detnam, 
+    from cxcdm import dmKeyRead, dmBlockOpen, dmGetName, dmBlockGetKeyList, dmBlockClose
+
+
+    def get_keyword_if_exists( block, keylist, key ):
+        """
+        Get keyword value if it exists, returns None if not found.
+        """
+        if key not in keylist:
+            return None
+        d,v = dmKeyRead( block, key )
+        return v
+
+
+    _block = dmBlockOpen( infile )
+    _keylist = [dmGetName(x).lower() for x in dmBlockGetKeyList( _block ) ]
+    _getvals = [ get_keyword_if_exists( _block, _keylist, k) for k in getlist ]
+    dmBlockClose( _block )
+
+    retvals = dict(zip(getlist, _getvals ))
+
+    return retvals
+
+def get_keys_from_ocat( obsid, getlist ):
     """
-    from coords.format import deg2ra, deg2dec
-    keylist = [dmGetName(x).lower() for x in dmBlockGetKeyList( block ) ]
+    
+    """
+    server = "cda.harvard.edu"
+    service = "srservices/ocatDetails.do"
+    resource = "http://{0}/{1}".format(server, service)
+
+    prop_service = "srservices/propAbstract.do"
+    prop_resource = "http://{0}/{1}".format(server, prop_service)
+        
+    def make_URL_request( resource, vals ):
+        """
+        Query and retrieve results from resourse using dictionary of
+        vals values.
+        """
+        import urllib as urllib
+        import urllib2 as urllib2
+
+        params = urllib.urlencode( vals )  # Encode into URL string, escape stuff/etc.
+        request = urllib2.Request( resource, params )
+        response = urllib2.urlopen( request )
+        page = response.read()
+        
+        if len(page) == 0:
+            raise Exception("Problem accessing resource {0}".format(resource))
+        
+        if response.getcode() != 200:
+            raise Exception( page )
+        return page
+
+
+    def parse_page( page):
+        page_lines = page.split("\n")
+
+        page_lines_nohdr = filter( lambda x : not x.startswith("#"), page_lines )
+
+        hdr = [x.lower() for x in page_lines_nohdr[0].split("\t")] 
+        ln =page_lines_nohdr[2] # should only be 1 row, but leave door open
+        tlin = ln.replace("\t\t","\tNone\t")
+        flds = tlin.split("\t")
+        tab = dict(zip( hdr, flds))
+        return tab  
+
+    def parse_prop_page(page):
+        """
+        Ugh, I hate parsing unstructured HTML :(
+        """
+
+        from textwrap import fill
+
+        pp = page.strip().split("\n")
+
+        begin = filter(lambda x: 'colspan="2"' in x, pp)
+        assert len(begin) == 1
+
+        begin_idx = pp.index(begin[0])
+        prop = pp[begin_idx+2]
+        prop = fill(prop.strip(), 80, subsequent_indent=" "*27,  initial_indent=" "*27).lstrip()
+
+        return prop
+       
+        
+
+
+    def translate_ocat_values( tab ):
+        #from coords.format import ra2deg, dec2deg
+        xtab = { "detnam" : "readout_detector",
+                 "obs_id" : "obsid",
+                 "instrume" : "instr",
+                 "grating" : "grat",
+                 "date-obs" : "start_date",
+                 "title" : "prop_title",
+                 "ra_targ" : "ra",
+                 "dec_targ" : "dec",
+                 "object" : "target_name",
+                 "livetime" : "exp_time",
+                 "readmode" : "mode",
+                 "nrows" : "row_cnt",
+                 "cycle" : "d_cyc",
+                 }
+        for x in xtab:
+            if xtab[x] in tab:
+                tab[x] = tab[xtab[x]]
+        
+        tab["ra_targ"] = float( tab["ra_targ"]) #float(ra2deg(":".join(tab["ra_targ"].strip().split(" "))))
+        tab["dec_targ"] = float( tab["dec_targ"]) #float(dec2deg(":".join(tab["dec_targ"].strip().split(" "))))
+        tab["telescop"] = "CHANDRA"
+        if tab["instrume"].startswith("ACIS"):
+            tab["instrume"] = "ACIS"
+            if "NONE" == tab["subary"]:
+                tab["nrows"] = "1024"
+
+        tab["livetime"] = str(float(tab["livetime"])*1000)
+
+    
+
+    page = make_URL_request( resource, { "obsid" : obsid, "format" : "text", "outputCoordUnits" : "decimal" } )
+    tab = parse_page( page )
+    for g in getlist:
+        if g not in tab:
+            tab[g] = None
+
+
+    translate_ocat_values (tab )
+
+    prop_page = make_URL_request( prop_resource, { "obsid" : obsid } )
+    prop = parse_prop_page(prop_page) 
+    tab["proposal_text"] = prop
+    
+    return tab
+
+
+
+def get_chandra_config( infile, info_level ):
+    
+    """
+    """
+
+
 
     getlist = [ "telescop", "instrume", "detnam", "date-obs", "livetime", 
         "grating", "datamode", "readmode", "object", 
@@ -139,9 +274,21 @@ def get_chandra_config( block, info_level ):
         "ra_pnt", "dec_pnt", "roll_pnt",
         "ra_targ", "dec_targ",
         "sim_x", "sim_y", "sim_z", "dy_avg", "dz_avg", "dth_avg" ]
-    getvals = [ get_keyword_if_exists( block, keylist, k) for k in getlist ]
+
     
-    retvals = dict(zip(getlist, getvals ))
+    if os.path.exists(infile):
+        retvals = get_keys_from_file( infile, getlist )
+    elif not infile.isdigit():
+        raise IOError("File not found: '{}'".format(infile) )
+    elif int(infile) <= 0 or int(infile) > 65535:
+        raise ValueError("OBS_ID value out of range (1:65535)")
+    else:
+        retvals = get_keys_from_ocat( infile, getlist )
+
+
+    #
+    # Fix values, make pretty
+    #
     
     if retvals["detnam"] and retvals["detnam"].startswith("ACIS"):
         retvals["detector"] = retvals["detnam"].split("-")[0]
@@ -190,8 +337,8 @@ def get_chandra_config( block, info_level ):
     if retvals["dtcor"]:
         retvals["dtcor"] = "{:.3g}".format( retvals["dtcor"] )
 
-
     #if info_level.sexagesimal:
+    #    from coords.format import deg2ra, deg2dec
     #    if retvals["ra_nom"] and retvals["dec_nom"]:
     #        retvals["ra_nom"] = deg2ra( retvals["ra_nom"], ":" )
     #        retvals["dec_nom"] = deg2dec( retvals["dec_nom"], ":" )
@@ -202,34 +349,25 @@ def get_chandra_config( block, info_level ):
     #        retvals["ra_targ"] = deg2ra( retvals["ra_targ"], ":" )
     #        retvals["dec_targ"] = deg2dec( retvals["dec_targ"], ":" )
 
-
     def get_list_vals( lvals, names ):
         """
         """
         simvals = map(lambda x: retvals[x], lvals)
 
-        if all(map( lambda x: x is not None, simvals)):
-            retstr = "("+" ".join(
-              [ "{}={:.8g}".format(n,v) for n,v in zip( names, simvals ) ] 
-              )+")"
-
-            return retstr
-        else:
+        if not all(map( lambda x: x is not None, simvals)):
             return None
 
-    retvals["sim"] = get_list_vals( [ "sim_x", "sim_y", "sim_z"], ["X", "Y", "Z"] )
+        retstr = ""+", ".join([ "{}={:.8g}".format(n,v) for n,v in zip( names, simvals ) ] )+""
 
+        return retstr
+
+    retvals["sim"] = get_list_vals( [ "sim_x", "sim_y", "sim_z"], ["X", "Y", "Z"] )
     retvals["soff"] = get_list_vals( [ "dy_avg", "dz_avg", "dth_avg"], ["dY", "dZ", "dTheta"])
     retvals["nom"] = get_list_vals( [ "ra_nom", "dec_nom", "roll_nom"], ["RA", "Dec", "Roll"] )
     retvals["pnt"] = get_list_vals( [ "ra_pnt", "dec_pnt", "roll_pnt"],["RA", "Dec", "Roll"] )
     retvals["targ"] = get_list_vals( [ "ra_targ", "dec_targ" ],["RA", "Dec"] )
-    
 
-    ss = get_summary( retvals, info_level )
-
-    return keylist,retvals, ss
-
-
+    return retvals
 
 
 def parse_details( default=False):
@@ -260,7 +398,7 @@ def parse_details( default=False):
     pp.add_option("-R", "--revision", dest="revision", default=False, action="store_true", help="Pipeline processing version" )
     pp.add_option("-E", "--creator", dest="creator", default=False, action="store_true", help="Creator and version of this file" )
     pp.add_option("-Q", "--sequence", dest="seqn", default=False, action="store_true", help="Observation sequence number" )
-    #pp.add_option("-P", "--propnum", dest="propnum", default=False, action="store_true", help="Proposal number" )
+    pp.add_option("-P", "--propnum", dest="propnum", default=False, action="store_true", help="Proposal number" )
     pp.add_option("-N", "--nom", dest="nom", default=False, action="store_true", help="Nominal pointing (tangent point)" )
     pp.add_option("-X", "--point", dest="point", default=False, action="store_true", help="Mean optical axis pointing" )
     pp.add_option("-T", "--target", dest="targ", default=False, action="store_true", help="User supplied target location" )
@@ -294,123 +432,12 @@ def parse_cl_args( default=False):
     info_level = o
         
     # Check list to only pick up files (not directories)
-    files_to_check = []
-    for ff in a: # sys.argv[1:]:
-        for s in stk.build(ff):
-            if not os.path.exists( s ):
-                v1( "{} does not exist. Skipping it.".format(s))
-                continue
-            if not os.path.isfile(s) :
-                v1( "{} is not a file.  Skipping it.".format(s))
-                continue            
-            files_to_check.append( s )    
-
+    files_to_check = a
+    
     if len( files_to_check ) == 0:
         raise ValueError("No usable files specified")
 
     return info_level,files_to_check
-    
-
-
-
-# Scrape DSIDENT -------------
-
-def find_or_construct_dsident( block, ds_idents, info_level ):
-    """
-    Get DS_IDENT value or DS_IDxxx value from header if it exists.
-    Otherwise, look at the OBS_ID keyword for Chandra files and 
-    use that.
-    """    
-
-    keylist,keyvals,obsinfo = get_chandra_config( block, info_level )
-
-    obsinfo=" ".join(obsinfo.replace("\n",",").split())[:-1]
-
-    def add_if_more_info( v ):
-        if v not in ds_idents:
-            ds_idents[v] = obsinfo
-        else:
-            if obsinfo and len(obsinfo) > len(ds_idents[v]):
-                ds_idents[v] = obsinfo
-
-    # Look for DS_IDxxx keywords that have values that start with 'ADS'
-    ds_idvals = filter( lambda x: x.startswith("ds_id"), keylist )
-    if ds_idvals:            
-        for ds_id in ds_idvals:
-            d,v = dmKeyRead( block, ds_id )
-            if v and v.startswith("ADS"):
-                add_if_more_info( v )
-
-    elif 'obs_id' in keylist:
-        # otherwise, look for Chandra OBS_ID values
-        if keyvals["telescop"].lower() != "chandra":
-            return
-
-        v = keyvals["obs_id"]
-        # if string value (should be) then strip off spaces
-        if hasattr( v, 'strip' ):
-            v=v.strip()
-
-        try:
-            ds_ident = "ADS/Sa.CXO#obs/{:05d}".format(int(v))                
-            add_if_more_info( ds_ident )
-        except:
-            v1( "Unknown obsid value '{}'".format(v))
-
-    else:
-        # Not all blocks of all files have keywords
-        return
-
-
-def print_results(ds_idents):
-    """
-    Report results.
-    
-    There are two formats
-    
-    \dataset [ADS/...]{Some text} and
-    \dataset {ADS/...}
-
-    """
-
-    if len(ds_idents) == 0:
-        v1("\nNo dataset identifiers were found.\n")
-    else:
-        v1( "\nThe following dataset identifiers were found:")
-        for dd in ds_idents:
-            if ds_idents[dd]:
-                v1( r"  \dataset[{}]{{{}}}".format( dd, ds_idents[dd] ))
-            else:
-                v1( r"  \dataset{{{}}}".format( dd.replace("#", r"\#")))
-    v1("")
-            
-
-@lw.handle_ciao_errors(toolname, version)
-def scrape_dsident():
-    """
-    Main routine to look through all blocks of all files
-    """
-    if len( sys.argv ) < 2:
-        raise ValueError( "Usage: {} filenames".format(sys.argv[0] ))
-
-    info_level,files_to_check = parse_cl_args()
-    
-    ds_idents = {}
-    for ff in files_to_check:
-        try:
-            tt = dmDatasetOpen( ff )
-        except Exception, E:
-            v1(str(E)+".  Skipping it.")
-            continue
-
-        for bb in xrange( dmDatasetGetNoBlocks(tt)  ):
-            block = dmDatasetMoveToBlock( tt, bb+1 )
-            find_or_construct_dsident( block, ds_idents, info_level )
-
-        dmDatasetClose(tt)
-    
-    print_results( ds_idents)
-
 
 
 def print_obs_summary( infile, obsinfo ):
@@ -418,7 +445,7 @@ def print_obs_summary( infile, obsinfo ):
     Print the observation summary tool
     """
     
-    v1( infile )
+    #v1( infile )
     v1( obsinfo )
     v1( "")
     
@@ -429,21 +456,26 @@ def sumobs():
     """
     Main routine to summarize a chandra obsid
     """
+    import stk as stk
+
     if len( sys.argv ) < 2:
-        raise ValueError( "Usage: {} filenames".format(sys.argv[0] ))
+        raise ValueError( "Usage: {} filenames|obs_ids".format(sys.argv[0] ))
 
     info_level,infiles = parse_cl_args(default=True)
+
+    if len(infiles) != 1 :
+        raise RuntimeError("Must supply only 1 file/obsid or a stack") 
+        
+    infiles = stk.build( infiles[0] )
     
     for infile in infiles:
-        block = dmBlockOpen( infile )    
-        keylist,keyvals,obsinfo = get_chandra_config( block, info_level )    
-        print_obs_summary( infile, obsinfo )
-        dmBlockClose( block )
+        retvals = get_chandra_config( infile, info_level )    
+        obs_info = get_summary( retvals, info_level )
+        print_obs_summary( infile, obs_info )
 
 
 
 if __name__ == "__main__":
-    #scrape_dsident()
     sumobs()
     sys.exit(0)
 
