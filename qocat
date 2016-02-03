@@ -276,15 +276,17 @@ def get_chandra_config( infile, info_level ):
         "sim_x", "sim_y", "sim_z", "dy_avg", "dz_avg", "dth_avg" ]
 
     
-    if os.path.exists(infile):
-        retvals = get_keys_from_file( infile, getlist )
-    elif not infile.isdigit():
-        raise IOError("File not found: '{}'".format(infile) )
-    elif int(infile) <= 0 or int(infile) > 65535:
-        raise ValueError("OBS_ID value out of range (1:65535)")
+    if infile.isdigit():
+        oo = int(infile)
+        if os.path.exists( infile ):
+            retvals = get_keys_from_file( infile, getlist )
+        elif (oo>0) and (oo<65536):
+            retvals = get_keys_from_ocat( infile, getlist )
+        else:
+            raise ValueError("OBS_ID value out of range (1:65535)")
     else:
-        retvals = get_keys_from_ocat( infile, getlist )
-
+        retvals = get_keys_from_file( infile, getlist )
+        
 
     #
     # Fix values, make pretty
