@@ -1,0 +1,450 @@
+#! /usr/bin/env python
+
+# 
+# Copyright (C) 2013  Smithsonian Astrophysical Observatory
+# 
+# 
+# This program is free software; you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation; either version 2 of the License, or
+# (at your option) any later version.
+# 
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+# 
+# You should have received a copy of the GNU General Public License along
+# with this program; if not, write to the Free Software Foundation, Inc.,
+# 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+# 
+
+import sys
+import os
+import stk
+from cxcdm import *
+
+import ciao_contrib.logger_wrapper as lw
+
+toolname = "summarize_chandra_dataset"
+version = "30 July 2013"
+
+lw.initialize_logger(toolname, verbose=1)
+v1 = lw.make_verbose_level(toolname, 1)
+
+
+def get_keyword_if_exists( block, keylist, key ):
+    """
+    Get keyword value if it exists, returns None if not found.
+    """
+    if key not in keylist:
+        return None
+    d,v = dmKeyRead( block, key )
+    return v
+
+
+
+def fmt_keyvalue_pair( key, keyvals, name, post="", eqls = ":" ):
+    if key not in keyvals or keyvals[key] is None:
+        return ""
+    
+    return "  {0:>20s} {1} {2} {3}\n".format( name, eqls, keyvals[key], post )
+
+
+
+def get_summary( retvals, info_level ):
+    """
+    Construct a string summarizing the configuration
+    """
+    retstr = ""
+
+    if info_level.mission: 
+        retstr += fmt_keyvalue_pair( "telescop", retvals, "Telescope" )
+    if info_level.instrument:
+        retstr += fmt_keyvalue_pair( "instrume", retvals, "Instrument")
+    if info_level.detector:
+        retstr += fmt_keyvalue_pair( "detnam", retvals, "Detector Name" )
+    if info_level.grating:
+        retstr += fmt_keyvalue_pair( "grating", retvals, "Grating" )
+    if info_level.obs_id:
+        retstr += fmt_keyvalue_pair( "obs_id", retvals, "Observation ID")
+    if info_level.obi_num:
+        retstr += fmt_keyvalue_pair( "obi_num", retvals, "Observation Number")
+    if info_level.cycle:
+        retstr += fmt_keyvalue_pair( "cycle", retvals, "Interleaved Exposure")
+    if info_level.object:
+        retstr += fmt_keyvalue_pair( "object", retvals, "Object Name")
+    if info_level.title:
+        retstr += fmt_keyvalue_pair( "title", retvals, "Proposal Title")
+    if info_level.observer:
+        retstr += fmt_keyvalue_pair( "observer", retvals, "Observer Name")
+    if info_level.dateobs:
+        retstr += fmt_keyvalue_pair( "date-obs", retvals, "Observation Date")
+    if info_level.livetime:
+        retstr += fmt_keyvalue_pair( "livetime", retvals, "Exposure Time", post="[ksec]")
+    if info_level.dtf:
+        retstr += fmt_keyvalue_pair( "dtcor", retvals, "Dead Time Factor" )
+    if info_level.datamode:
+        retstr += fmt_keyvalue_pair( "datamode", retvals, "Data Mode")
+    if info_level.readmode:
+        retstr += fmt_keyvalue_pair( "readmode", retvals, "Readout Mode")
+    if info_level.nrows:
+        retstr += fmt_keyvalue_pair( "nrows", retvals, "Full Frame/Subarray")
+    if info_level.ascdsver:
+        retstr += fmt_keyvalue_pair( "ascdsver", retvals, "Software Version")
+    if info_level.caldbver:
+        retstr += fmt_keyvalue_pair( "caldbver", retvals, "CALDB Version")
+    if info_level.revision:
+        retstr += fmt_keyvalue_pair( "revision", retvals, "Processing Revision")
+    if info_level.creator:
+        retstr += fmt_keyvalue_pair( "creator", retvals, "Created by tool" )
+    if info_level.seqn:
+        retstr += fmt_keyvalue_pair( "seq_num", retvals, "Observation Sequence")
+    
+    if info_level.nom:
+        retstr += fmt_keyvalue_pair( "nom", retvals, "Nominal Pointing", post="[deg]")
+
+    if info_level.point:
+        retstr += fmt_keyvalue_pair( "pnt", retvals, "Mean Optical Axis", post="[deg]")
+
+    if info_level.targ:
+        retstr += fmt_keyvalue_pair( "targ", retvals, "Target Location", post="[deg]")
+    
+    if info_level.sim:
+        retstr += fmt_keyvalue_pair( "sim", retvals, "SIM Location", post="[mm]")
+    
+    if info_level.soff:
+        retstr += fmt_keyvalue_pair( "soff", retvals, "Mean SIM offsets", post="[mm, mm, deg]")
+
+    return retstr
+
+
+
+
+def get_chandra_config( block, info_level ):
+    
+    """
+    telescop, detnam, 
+    """
+    from coords.format import deg2ra, deg2dec
+    keylist = [dmGetName(x).lower() for x in dmBlockGetKeyList( block ) ]
+
+    getlist = [ "telescop", "instrume", "detnam", "date-obs", "livetime", 
+        "grating", "datamode", "readmode", "object", 
+        "observer", "obs_id", "obi_num", "cycle", "nrows" , 
+        "title", "dtcor", "dtycycle", 
+        "ascdsver", "caldbver", "revision", "creator",
+        "seq_num", 
+        "ra_nom", "dec_nom", "roll_nom",
+        "ra_pnt", "dec_pnt", "roll_pnt",
+        "ra_targ", "dec_targ",
+        "sim_x", "sim_y", "sim_z", "dy_avg", "dz_avg", "dth_avg" ]
+    getvals = [ get_keyword_if_exists( block, keylist, k) for k in getlist ]
+    
+    retvals = dict(zip(getlist, getvals ))
+    
+    if retvals["detnam"] and retvals["detnam"].startswith("ACIS"):
+        retvals["detector"] = retvals["detnam"].split("-")[0]
+    else:
+        retvals["detector"] = retvals["detnam"]
+    
+    if retvals["livetime"]:
+        rlt = float( retvals["livetime"] ) /1000.0 # ksec
+        rlt = int( (rlt+0.5)*10) / 10.0 # round to 1 decimal place
+        retvals["livetime"] = rlt
+    
+    if retvals["nrows"]:
+        if int(retvals["nrows"]) < 1022:
+            retvals["nrows"] = "SUBARRAY"
+        else:
+            retvals["nrows"] = "FULLFRAME"
+
+    if retvals["date-obs"]:
+        retvals["date-obs"] = retvals["date-obs"].split("T")[0]
+
+    if retvals["cycle"]:
+        if retvals["cycle"] == 'P':
+            retvals["cycle"] = "PRIMARY"
+        elif retvals["cycle"] == 'S':
+            retvals["cycle"] = "SECONDARY"
+        elif retvals["cycle"] == 'B':
+            retvals["cycle"] = "BOTH"
+        else:
+            #Unknown, pass same value along
+            pass
+
+    if retvals["sim_z"]:
+        # sim_z positive is HRC aimpoints
+        # sim_z < -205 is ACIS-I aimpoint
+        # sim_z > -205 is ACIS-S aimpoint
+        z = float( retvals["sim_z"] )
+        if z > 0:
+            aim = retvals["detector"] if retvals["detector"] else None
+        elif z < -205:
+            aim = "ACIS-I"
+        else:
+            aim = "ACIS-S"
+        retvals["aimpoint"] = aim
+
+
+    if retvals["dtcor"]:
+        retvals["dtcor"] = "{:.3g}".format( retvals["dtcor"] )
+
+
+    #if info_level.sexagesimal:
+    #    if retvals["ra_nom"] and retvals["dec_nom"]:
+    #        retvals["ra_nom"] = deg2ra( retvals["ra_nom"], ":" )
+    #        retvals["dec_nom"] = deg2dec( retvals["dec_nom"], ":" )
+    #    if retvals["ra_pnt"] and retvals["dec_pnt"]:
+    #        retvals["ra_pnt"] = deg2ra( retvals["ra_pnt"], ":" )
+    #        retvals["dec_pnt"] = deg2dec( retvals["dec_pnt"], ":" )
+    #    if retvals["ra_targ"] and retvals["dec_targ"]:
+    #        retvals["ra_targ"] = deg2ra( retvals["ra_targ"], ":" )
+    #        retvals["dec_targ"] = deg2dec( retvals["dec_targ"], ":" )
+
+
+    def get_list_vals( lvals, names ):
+        """
+        """
+        simvals = map(lambda x: retvals[x], lvals)
+
+        if all(map( lambda x: x is not None, simvals)):
+            retstr = "("+" ".join(
+              [ "{}={:.8g}".format(n,v) for n,v in zip( names, simvals ) ] 
+              )+")"
+
+            return retstr
+        else:
+            return None
+
+    retvals["sim"] = get_list_vals( [ "sim_x", "sim_y", "sim_z"], ["X", "Y", "Z"] )
+
+    retvals["soff"] = get_list_vals( [ "dy_avg", "dz_avg", "dth_avg"], ["dY", "dZ", "dTheta"])
+    retvals["nom"] = get_list_vals( [ "ra_nom", "dec_nom", "roll_nom"], ["RA", "Dec", "Roll"] )
+    retvals["pnt"] = get_list_vals( [ "ra_pnt", "dec_pnt", "roll_pnt"],["RA", "Dec", "Roll"] )
+    retvals["targ"] = get_list_vals( [ "ra_targ", "dec_targ" ],["RA", "Dec"] )
+    
+
+    ss = get_summary( retvals, info_level )
+
+    return keylist,retvals, ss
+
+
+
+
+def parse_details( default=False):
+    """
+    Parse command line args to extract list of files to check.
+    """
+    from optparse import OptionParser
+    pp = OptionParser()
+
+    pp.add_option("-m", "--mission", dest="mission", default=False, action="store_true", help="Telescope" )
+    pp.add_option("-i", "--instrument", dest="instrument", default=False, action="store_true", help="Instrument")
+    pp.add_option("-d", "--detector", dest="detector", default=False, action="store_true", help="Detector" )
+    pp.add_option("-g", "--grating", dest="grating", default=False, action="store_true", help="Grating" )
+    pp.add_option("-o", "--obsid", dest="obs_id", default=False, action="store_true", help="OBS_ID" )
+    pp.add_option("-O", "--obi", dest="obi_num", default=False, action="store_true", help="OBI Number" )
+    pp.add_option("-c", "--cycle", dest="cycle", default=False, action="store_true", help="Alternating Exposure Mode (ACIS only)" )
+    pp.add_option("-b", "--object", dest="object", default=False, action="store_true", help="Object" )
+    pp.add_option("-p", "--proptitle", dest="title", default=False, action="store_true", help="Proposal Title" )
+    pp.add_option("-n", "--observer", dest="observer", default=False, action="store_true", help="Observer" )
+    pp.add_option("-D", "--dateobs", dest="dateobs", default=False, action="store_true", help="Observation start date" )
+    pp.add_option("-t", "--exposuretime", dest="livetime", default=False, action="store_true", help="Observation exposure time" )
+    pp.add_option("-f", "--dtf", dest="dtf", default=False, action="store_true", help="Average dead time" )
+    pp.add_option("-a", "--datamode", dest="datamode", default=False, action="store_true", help="Datamode" )
+    pp.add_option("-r", "--readmode", dest="readmode", default=False, action="store_true", help="Readmode (ACIS only)" )
+    pp.add_option("-s", "--subarray", dest="nrows", default=False, action="store_true", help="Subarray (ACIS only)" )
+    pp.add_option("-A", "--ascdsver", dest="ascdsver", default=False, action="store_true", help="Pipeline processing version" )
+    pp.add_option("-C", "--caldbver", dest="caldbver", default=False, action="store_true", help="Pipeline calibration database version" )
+    pp.add_option("-R", "--revision", dest="revision", default=False, action="store_true", help="Pipeline processing version" )
+    pp.add_option("-E", "--creator", dest="creator", default=False, action="store_true", help="Creator and version of this file" )
+    pp.add_option("-Q", "--sequence", dest="seqn", default=False, action="store_true", help="Observation sequence number" )
+    #pp.add_option("-P", "--propnum", dest="propnum", default=False, action="store_true", help="Proposal number" )
+    pp.add_option("-N", "--nom", dest="nom", default=False, action="store_true", help="Nominal pointing (tangent point)" )
+    pp.add_option("-X", "--point", dest="point", default=False, action="store_true", help="Mean optical axis pointing" )
+    pp.add_option("-T", "--target", dest="targ", default=False, action="store_true", help="User supplied target location" )
+    pp.add_option("-S", "--sim", dest="sim", default=False, action="store_true", help="SIM location" )
+    pp.add_option("-F", "--simoffset", dest="soff", default=False, action="store_true", help="Mean sim offsets" )
+    pp.add_option("-Z", "--all", dest="withall", default=False, action="store_true", help="All of the above")
+    pp.add_option("-x", "--sexagesimal", dest="sexagesimal", default=False, action="store_true", help="Convert RA & Dec values to sexagesimal format")
+
+    (ops,args) = pp.parse_args()
+
+    if len(args) == len(sys.argv[1:]) and default:
+        for k in dir(ops):
+            if k.startswith("_"):
+                continue
+            setattr( ops, k, True )
+
+    if ops.withall:
+        for k in dir(ops):
+            if k.startswith("_"):
+                continue
+            setattr( ops, k, True )
+
+    return ops,args
+
+
+def parse_cl_args( default=False):
+    """
+    Parse command line args to extract list of files to check.
+    """
+    o,a = parse_details(default=default)
+    info_level = o
+        
+    # Check list to only pick up files (not directories)
+    files_to_check = []
+    for ff in a: # sys.argv[1:]:
+        for s in stk.build(ff):
+            if not os.path.exists( s ):
+                v1( "{} does not exist. Skipping it.".format(s))
+                continue
+            if not os.path.isfile(s) :
+                v1( "{} is not a file.  Skipping it.".format(s))
+                continue            
+            files_to_check.append( s )    
+
+    if len( files_to_check ) == 0:
+        raise ValueError("No usable files specified")
+
+    return info_level,files_to_check
+    
+
+
+
+# Scrape DSIDENT -------------
+
+def find_or_construct_dsident( block, ds_idents, info_level ):
+    """
+    Get DS_IDENT value or DS_IDxxx value from header if it exists.
+    Otherwise, look at the OBS_ID keyword for Chandra files and 
+    use that.
+    """    
+
+    keylist,keyvals,obsinfo = get_chandra_config( block, info_level )
+
+    obsinfo=" ".join(obsinfo.replace("\n",",").split())[:-1]
+
+    def add_if_more_info( v ):
+        if v not in ds_idents:
+            ds_idents[v] = obsinfo
+        else:
+            if obsinfo and len(obsinfo) > len(ds_idents[v]):
+                ds_idents[v] = obsinfo
+
+    # Look for DS_IDxxx keywords that have values that start with 'ADS'
+    ds_idvals = filter( lambda x: x.startswith("ds_id"), keylist )
+    if ds_idvals:            
+        for ds_id in ds_idvals:
+            d,v = dmKeyRead( block, ds_id )
+            if v and v.startswith("ADS"):
+                add_if_more_info( v )
+
+    elif 'obs_id' in keylist:
+        # otherwise, look for Chandra OBS_ID values
+        if keyvals["telescop"].lower() != "chandra":
+            return
+
+        v = keyvals["obs_id"]
+        # if string value (should be) then strip off spaces
+        if hasattr( v, 'strip' ):
+            v=v.strip()
+
+        try:
+            ds_ident = "ADS/Sa.CXO#obs/{:05d}".format(int(v))                
+            add_if_more_info( ds_ident )
+        except:
+            v1( "Unknown obsid value '{}'".format(v))
+
+    else:
+        # Not all blocks of all files have keywords
+        return
+
+
+def print_results(ds_idents):
+    """
+    Report results.
+    
+    There are two formats
+    
+    \dataset [ADS/...]{Some text} and
+    \dataset {ADS/...}
+
+    """
+
+    if len(ds_idents) == 0:
+        v1("\nNo dataset identifiers were found.\n")
+    else:
+        v1( "\nThe following dataset identifiers were found:")
+        for dd in ds_idents:
+            if ds_idents[dd]:
+                v1( r"  \dataset[{}]{{{}}}".format( dd, ds_idents[dd] ))
+            else:
+                v1( r"  \dataset{{{}}}".format( dd.replace("#", r"\#")))
+    v1("")
+            
+
+@lw.handle_ciao_errors(toolname, version)
+def scrape_dsident():
+    """
+    Main routine to look through all blocks of all files
+    """
+    if len( sys.argv ) < 2:
+        raise ValueError( "Usage: {} filenames".format(sys.argv[0] ))
+
+    info_level,files_to_check = parse_cl_args()
+    
+    ds_idents = {}
+    for ff in files_to_check:
+        try:
+            tt = dmDatasetOpen( ff )
+        except Exception, E:
+            v1(str(E)+".  Skipping it.")
+            continue
+
+        for bb in xrange( dmDatasetGetNoBlocks(tt)  ):
+            block = dmDatasetMoveToBlock( tt, bb+1 )
+            find_or_construct_dsident( block, ds_idents, info_level )
+
+        dmDatasetClose(tt)
+    
+    print_results( ds_idents)
+
+
+
+def print_obs_summary( infile, obsinfo ):
+    """
+    Print the observation summary tool
+    """
+    
+    v1( infile )
+    v1( obsinfo )
+    v1( "")
+    
+
+
+@lw.handle_ciao_errors(toolname, version)
+def sumobs():
+    """
+    Main routine to summarize a chandra obsid
+    """
+    if len( sys.argv ) < 2:
+        raise ValueError( "Usage: {} filenames".format(sys.argv[0] ))
+
+    info_level,infiles = parse_cl_args(default=True)
+    
+    for infile in infiles:
+        block = dmBlockOpen( infile )    
+        keylist,keyvals,obsinfo = get_chandra_config( block, info_level )    
+        print_obs_summary( infile, obsinfo )
+        dmBlockClose( block )
+
+
+
+if __name__ == "__main__":
+    #scrape_dsident()
+    sumobs()
+    sys.exit(0)
+
+
