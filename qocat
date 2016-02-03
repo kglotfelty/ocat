@@ -236,7 +236,10 @@ def get_keys_from_ocat( obsid, getlist ):
             if "NONE" == tab["subary"]:
                 tab["nrows"] = "1024"
 
-        tab["livetime"] = str(float(tab["livetime"])*1000)
+        if "None" == tab["livetime"]:
+            tab["livetime"] = "0"
+        else:
+            tab["livetime"] = str(float(tab["livetime"])*1000)
 
     
 
@@ -299,7 +302,7 @@ def get_chandra_config( infile, info_level ):
     
     if retvals["livetime"]:
         rlt = float( retvals["livetime"] ) /1000.0 # ksec
-        rlt = int( (rlt+0.5)*10) / 10.0 # round to 1 decimal place
+        rlt = int(rlt*10+0.5) / 10.0 # round to 1 decimal place
         retvals["livetime"] = rlt
     
     if retvals["nrows"]:
