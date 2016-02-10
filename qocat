@@ -279,17 +279,22 @@ def get_chandra_config( infile, info_level ):
         "sim_x", "sim_y", "sim_z", "dy_avg", "dz_avg", "dth_avg" ]
 
     
-    if infile.isdigit():
-        oo = int(infile)
-        if os.path.exists( infile ):
-            retvals = get_keys_from_file( infile, getlist )
-        elif (oo>0) and (oo<65536):
-            retvals = get_keys_from_ocat( infile, getlist )
-        else:
-            raise ValueError("OBS_ID value out of range (1:65535)")
-    else:
+    try:
         retvals = get_keys_from_file( infile, getlist )
-        
+        if "obs_id" in retvals and retvals["obs_id"].isdigit():
+            retvals_ocat = get_keys_from_ocat( retvals["obs_id"], getlist )
+            for kk in retvals_ocat:
+                if kk not in retvals:
+                    retvals[kk] = retvals_ocat[kk]
+    except:        
+        if infile.isdigit():
+            oo = int(infile)
+            if (oo>0) and (oo<65536):
+                retvals = get_keys_from_ocat( infile, getlist )
+            else:
+                raise ValueError("Illegal obsid value")
+        else:
+            raise RuntimeError("Problem with infile")
 
     #
     # Fix values, make pretty
