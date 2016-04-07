@@ -1,5 +1,18 @@
 #! /usr/bin/env python
 
+
+"""
+TODO:  Access to Issues table!
+
+http://cxc.harvard.edu/soft/op/op_custom_table.html
+
+http://cxc/cgi-bin/op/op_custom_table.cgi?obsid=on&obsid_col=1&obsid_from=635&obsid_to=635&issues=on&issues_col=2&issue_all=on&order_one=ObsID&tab_del=Tab-delimited
+
+"""
+
+
+
+
 # 
 # Copyright (C) 2013  Smithsonian Astrophysical Observatory
 # 
@@ -143,6 +156,28 @@ def get_keys_from_file( infile, getlist ):
 
     return retvals
 
+def make_URL_request( resource, vals ):
+    """
+    Query and retrieve results from resourse using dictionary of
+    vals values.
+    """
+    import urllib as urllib
+    import urllib2 as urllib2
+
+    params = urllib.urlencode( vals )  # Encode into URL string, escape stuff/etc.
+    request = urllib2.Request( resource, params )
+    response = urllib2.urlopen( request )
+    page = response.read()
+    
+    if len(page) == 0:
+        raise Exception("Problem accessing resource {0}".format(resource))
+    
+    if response.getcode() != 200:
+        raise Exception( page )
+    return page
+
+
+
 def get_keys_from_ocat( obsid, getlist ):
     """
     
@@ -154,25 +189,6 @@ def get_keys_from_ocat( obsid, getlist ):
     prop_service = "srservices/propAbstract.do"
     prop_resource = "http://{0}/{1}".format(server, prop_service)
         
-    def make_URL_request( resource, vals ):
-        """
-        Query and retrieve results from resourse using dictionary of
-        vals values.
-        """
-        import urllib as urllib
-        import urllib2 as urllib2
-
-        params = urllib.urlencode( vals )  # Encode into URL string, escape stuff/etc.
-        request = urllib2.Request( resource, params )
-        response = urllib2.urlopen( request )
-        page = response.read()
-        
-        if len(page) == 0:
-            raise Exception("Problem accessing resource {0}".format(resource))
-        
-        if response.getcode() != 200:
-            raise Exception( page )
-        return page
 
 
     def parse_page( page):
@@ -205,8 +221,6 @@ def get_keys_from_ocat( obsid, getlist ):
 
         return prop
        
-        
-
 
     def translate_ocat_values( tab ):
         #from coords.format import ra2deg, dec2deg
@@ -224,6 +238,7 @@ def get_keys_from_ocat( obsid, getlist ):
                  "nrows" : "row_cnt",
                  "cycle" : "d_cyc",
                  }
+
         for x in xtab:
             if xtab[x] in tab:
                 tab[x] = tab[xtab[x]]
