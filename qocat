@@ -11,10 +11,8 @@ http://cxc/cgi-bin/op/op_custom_table.cgi?obsid=on&obsid_col=1&obsid_from=635&ob
 """
 
 
-
-
 # 
-# Copyright (C) 2013  Smithsonian Astrophysical Observatory
+# Copyright (C) 2016  Smithsonian Astrophysical Observatory
 # 
 # 
 # This program is free software; you can redistribute it and/or modify
@@ -38,7 +36,7 @@ import os
 import ciao_contrib.logger_wrapper as lw
 
 toolname = "qocat"
-version = "03 Feb 2016"
+version = "07 Apr 2016"
 
 lw.initialize_logger(toolname, verbose=1)
 v1 = lw.make_verbose_level(toolname, 1)
@@ -120,11 +118,16 @@ def get_summary( retvals, info_level ):
         retstr += fmt_keyvalue_pair( "sim", retvals, "SIM Location", post="[mm]")
     if info_level.soff:
         retstr += fmt_keyvalue_pair( "soff", retvals, "Mean SIM offsets", post="[mm, mm, deg]")
+
+    if "status" in retvals:
+        retstr += fmt_keyvalue_pair( "status", retvals, "Archive Status")
     if "public_avail" in retvals:
         retstr += fmt_keyvalue_pair( "public_avail", retvals, "Publically Available")
-
+    if "url" in retvals:
+        retstr += fmt_keyvalue_pair( "url", retvals, "URL")
     if "proposal_text" in retvals:
         retstr += fmt_keyvalue_pair( "proposal_text", retvals, "Proposal Abstract")
+
 
     return retstr
 
@@ -255,7 +258,13 @@ def get_keys_from_ocat( obsid, getlist ):
             tab["livetime"] = "0"
         else:
             tab["livetime"] = str(float(tab["livetime"])*1000)
+        
+        if "title" in tab:
+            from textwrap import fill
+            tab["title"] = fill(tab["title"].strip(), 80, subsequent_indent=" "*27,  initial_indent=" "*27).lstrip()
 
+        if "status" in tab and tab["status"] == "archived":
+            tab["url"] = "ftp://cda.cfa.harvard.edu/pub/byobsid/{}/{}/".format( tab["obs_id"][-1], tab["obs_id"])
     
 
     page = make_URL_request( resource, { "obsid" : obsid, "format" : "text", "outputCoordUnits" : "decimal" } )
