@@ -1,7 +1,7 @@
 
 server = "cda.harvard.edu"
 service = "srservices/ocatDetails.do"
-resource = "http://{0}/{1}".format(server, service)
+resource = "https://{0}/{1}".format(server, service)
 
 OCAT_TO_HUMAN = {
     'SEQ_NUM' : 'Sequence Number',

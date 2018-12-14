@@ -189,10 +189,10 @@ def get_keys_from_ocat( obsid, getlist ):
     """
     server = "cda.harvard.edu"
     service = "srservices/ocatDetails.do"
-    resource = "http://{0}/{1}".format(server, service)
+    resource = "https://{0}/{1}".format(server, service)
 
     prop_service = "srservices/propAbstract.do"
-    prop_resource = "http://{0}/{1}".format(server, prop_service)
+    prop_resource = "https://{0}/{1}".format(server, prop_service)
         
 
 
