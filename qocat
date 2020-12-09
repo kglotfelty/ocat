@@ -27,7 +27,7 @@ import os
 import ciao_contrib.logger_wrapper as lw
 
 toolname = "qocat"
-version = "28 Jul 2017"
+version = "09 December 2020"
 
 lw.initialize_logger(toolname, verbose=1)
 v1 = lw.make_verbose_level(toolname, 1)
@@ -265,7 +265,7 @@ def get_keys_from_ocat( obsid, getlist ):
             tab["title"] = fill(tab["title"].strip(), 80, subsequent_indent=" "*27,  initial_indent=" "*27).lstrip()
 
         if "status" in tab and tab["status"] == "archived":
-            tab["url"] = "ftp://cda.cfa.harvard.edu/pub/byobsid/{}/{}/".format( tab["obs_id"][-1], tab["obs_id"])
+            tab["url"] = "https://cxc.cfa.harvard.edu/cdaftp/byobsid/{}/{}/".format( tab["obs_id"][-1], tab["obs_id"])
     
 
     page = make_URL_request( resource, { "obsid" : obsid, "format" : "text", "outputCoordUnits" : "decimal" } )
