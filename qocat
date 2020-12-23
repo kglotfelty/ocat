@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 # 
-# Copyright (C) 2016-2017  Smithsonian Astrophysical Observatory
+# Copyright (C) 2016-2017, 2020  Smithsonian Astrophysical Observatory
 # 
 # 
 # This program is free software; you can redistribute it and/or modify
@@ -18,8 +18,6 @@
 # 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 # 
 
-from __future__ import print_function
-
 
 import sys
 import os
@@ -27,7 +25,7 @@ import os
 import ciao_contrib.logger_wrapper as lw
 
 toolname = "qocat"
-version = "09 December 2020"
+version = "23 December 2020"
 
 lw.initialize_logger(toolname, verbose=1)
 v1 = lw.make_verbose_level(toolname, 1)
@@ -165,13 +163,17 @@ def make_URL_request( resource, vals ):
     """
     Query and retrieve results from resourse using dictionary of
     vals values.
-    """
 
-    import six.moves.urllib as urllib
-    params = urllib.parse.urlencode( vals )  # Encode into URL string, escape stuff/etc.
-    request = urllib.request.Request( resource, params.encode("ascii") )
-    request.add_header('User-Agent', 'ciao_contrib.cda.csccli/1.0') #make easy to ID in logs
-    response = urllib.request.urlopen( request )
+    The ciao-install version of python doesn't setup the ssl certificates
+    correctly so we have to access the cxc site w/o verification.
+    """
+    import urllib.request as request
+    import urllib.parse as urlp
+    import ssl as ssl
+    no_context = ssl._create_unverified_context()
+    params = urlp.urlencode( vals )  # Encode into URL string, escape stuff/etc.
+    rr = request.Request(resource, params.encode("ascii"))
+    response = request.urlopen(rr,context=no_context)
     page = response.read()
     
     if len(page) == 0:
