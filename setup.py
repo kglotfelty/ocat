@@ -8,7 +8,7 @@ assert "ASCDS_INSTALL" in os.environ, "Please run this after CIAO has been setup
 
 from distutils.core import setup
 setup( name='qocat',
-        version='4.13.0',
+        version='4.13.1',
         description='Query the Chandra Observation Catalog by ObsId',
         author='Kenny Glotfelty',
         author_email='glotfeltyk@si.edu',
