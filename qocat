@@ -45,7 +45,7 @@ def fmt_keyvalue_pair( key, keyvals, name, post="", eqls = ":" ):
     if key not in keyvals or keyvals[key] is None:
         return ""
     
-    return "  {0:>22s} {1} {2} {3}\n".format( name, eqls, keyvals[key], post )
+    return "  \033[36m{0:>22s}\033[0m {1} \033[33m{2} {3}\033[0m\n".format( name, eqls, keyvals[key], post )
 
 
 def get_summary( retvals, info_level ):
@@ -62,6 +62,8 @@ def get_summary( retvals, info_level ):
         retstr += fmt_keyvalue_pair( "detnam", retvals, "Detector Name" )
     if info_level.grating:
         retstr += fmt_keyvalue_pair( "grating", retvals, "Grating" )
+
+    retstr += fmt_keyvalue_pair("aimpoint", retvals, "Aimpoint Location")
     if info_level.obs_id:
         retstr += fmt_keyvalue_pair( "obs_id", retvals, "Observation ID")
     if info_level.obi_num:
@@ -267,7 +269,7 @@ def get_keys_from_ocat( obsid, getlist ):
             tab["title"] = fill(tab["title"].strip(), 80, subsequent_indent=" "*27,  initial_indent=" "*27).lstrip()
 
         if "status" in tab and tab["status"] == "archived":
-            tab["url"] = "https://cxc.cfa.harvard.edu/cdaftp/byobsid/{}/{}/".format( tab["obs_id"][-1], tab["obs_id"])
+            tab["url"] = "\033[4mhttps://cxc.cfa.harvard.edu/cdaftp/byobsid/{}/{}/\033[0m".format( tab["obs_id"][-1], tab["obs_id"])
     
 
     page = make_URL_request( resource, { "obsid" : obsid, "format" : "text", "outputCoordUnits" : "decimal" } )
@@ -371,23 +373,30 @@ def get_chandra_config( infile, info_level ):
             aim = "ACIS-S"
         retvals["aimpoint"] = aim
 
-
+    if retvals["title"]:
+        from textwrap import fill
+        retvals["title"] = fill(retvals["title"].strip(), 80, subsequent_indent=" "*27,  initial_indent=" "*27).lstrip()
+        
     if retvals["dtcor"]:
         retvals["dtcor"] = "{:.3g}".format( retvals["dtcor"] )
 
-    #if info_level.sexagesimal:
-    #    from coords.format import deg2ra, deg2dec
-    #    if retvals["ra_nom"] and retvals["dec_nom"]:
-    #        retvals["ra_nom"] = deg2ra( retvals["ra_nom"], ":" )
-    #        retvals["dec_nom"] = deg2dec( retvals["dec_nom"], ":" )
-    #    if retvals["ra_pnt"] and retvals["dec_pnt"]:
-    #        retvals["ra_pnt"] = deg2ra( retvals["ra_pnt"], ":" )
-    #        retvals["dec_pnt"] = deg2dec( retvals["dec_pnt"], ":" )
-    #    if retvals["ra_targ"] and retvals["dec_targ"]:
-    #        retvals["ra_targ"] = deg2ra( retvals["ra_targ"], ":" )
-    #        retvals["dec_targ"] = deg2dec( retvals["dec_targ"], ":" )
+    if info_level.sexagesimal:
+        from coords.format import deg2ra, deg2dec
+        if retvals["ra_nom"] and retvals["dec_nom"]:
+            retvals["ra_nom"] = deg2ra( retvals["ra_nom"], ":" , ndp=1)
+            retvals["dec_nom"] = deg2dec( retvals["dec_nom"], ":", ndp=1 )
+            if retvals["roll_nom"]:
+                retvals["roll_nom"] = "{:.2f}".format(retvals["roll_nom"])
+        if retvals["ra_pnt"] and retvals["dec_pnt"]:
+            retvals["ra_pnt"] = deg2ra( retvals["ra_pnt"], ":", ndp=1 )
+            retvals["dec_pnt"] = deg2dec( retvals["dec_pnt"], ":", ndp=1 )
+            if retvals["roll_pnt"]:
+                retvals["roll_pnt"] = "{:.2f}".format(retvals["roll_pnt"])
+        if retvals["ra_targ"] and retvals["dec_targ"]:
+            retvals["ra_targ"] = deg2ra( retvals["ra_targ"], ":", ndp=1 )
+            retvals["dec_targ"] = deg2dec( retvals["dec_targ"], ":", ndp=1 )
 
-    def get_list_vals( lvals, names ):
+    def get_list_vals( lvals, names, digits=8 ):
         """
         """
         simvals = [ retvals[x] for x in lvals]
@@ -395,12 +404,17 @@ def get_chandra_config( infile, info_level ):
         if not all(chk):
             return None
 
-        retstr = ""+", ".join([ "{}={:.8g}".format(n,v) for n,v in zip( names, simvals ) ] )+""
+        if isinstance(simvals[0], str):
+            fmt = "{}={}"
+        else:
+            fmt = f"{{}}={{:.{digits}g}}"
+
+        retstr = ""+", ".join([ fmt.format(n,v) for n,v in zip( names, simvals ) ] )+""
 
         return retstr
 
-    retvals["sim"] = get_list_vals( [ "sim_x", "sim_y", "sim_z"], ["X", "Y", "Z"] )
-    retvals["soff"] = get_list_vals( [ "dy_avg", "dz_avg", "dth_avg"], ["dY", "dZ", "dTheta"])
+    retvals["sim"] = get_list_vals( [ "sim_x", "sim_y", "sim_z"], ["X", "Y", "Z"],digits=5)
+    retvals["soff"] = get_list_vals( [ "dy_avg", "dz_avg", "dth_avg"], ["dY", "dZ", "dTheta"], digits=3)
     retvals["nom"] = get_list_vals( [ "ra_nom", "dec_nom", "roll_nom"], ["RA", "Dec", "Roll"] )
     retvals["pnt"] = get_list_vals( [ "ra_pnt", "dec_pnt", "roll_pnt"],["RA", "Dec", "Roll"] )
     retvals["targ"] = get_list_vals( [ "ra_targ", "dec_targ" ],["RA", "Dec"] )
