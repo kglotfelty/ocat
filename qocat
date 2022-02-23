@@ -243,6 +243,7 @@ def get_keys_from_ocat( obsid, getlist ):
                  "object" : "target_name",
                  "livetime" : "exp_time",
                  "readmode" : "mode",
+                 "firstrow" : "strt_row",
                  "nrows" : "row_cnt",
                  "cycle" : "d_cyc",
                  }
@@ -270,7 +271,23 @@ def get_keys_from_ocat( obsid, getlist ):
 
         if "status" in tab and tab["status"] == "archived":
             tab["url"] = "\033[4mhttps://cxc.cfa.harvard.edu/cdaftp/byobsid/{}/{}/\033[0m".format( tab["obs_id"][-1], tab["obs_id"])
-    
+
+        if "type" in tab:
+            human = { 'ER' : 'ER - Engineering Request',
+                      'GO' : 'GO - Guest Observer',
+                      'GTO' : 'GTO - Guaranteed Time Observer',
+                      'TOO' : 'TOO - Target of Opportunity',
+                      'CCT' : 'CCT - Chandra Cold Target',
+                      'DDT' : "DDT - Director's Discretionary Time",
+                      'CAL' : 'CAL - Calibration' }
+            if tab["type"] in human:
+                tab["type"] = human[tab["type"]]
+                        
+    # TODO: figure out if special dither pattern requested
+    # TODO: pointing offsets
+    # TODO: HRC blank enabled
+    # TODO: acis PHA filters
+    # TODO: acis windows    
 
     page = make_URL_request( resource, { "obsid" : obsid, "format" : "text", "outputCoordUnits" : "decimal" } )
     tab = parse_page( page )
@@ -342,7 +359,7 @@ def get_chandra_config( infile, info_level ):
     
     if retvals["nrows"]:
         if int(retvals["nrows"]) < 1022:
-            retvals["nrows"] = "SUBARRAY"
+            retvals["nrows"] = "{} row SUBARRAY starting at row {}".format( retvals["nrows"], retvals["firstrow"])
         else:
             retvals["nrows"] = "FULLFRAME"
 
