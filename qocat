@@ -21,7 +21,7 @@
 'Query the chandra observation catalog'
 
 import sys
-
+import os
 import ciao_contrib.logger_wrapper as lw
 
 toolname = "qocat"
@@ -30,14 +30,13 @@ version = "25 Feb 2022"
 lw.initialize_logger(toolname, verbose=1)
 v1 = lw.make_verbose_level(toolname, 1)
 
-"""
-TODO:  Access to Issues table!
 
-http://cxc.harvard.edu/soft/op/op_custom_table.html
+def colorize():
+    'Apply colors to text output or not'
 
-http://cxc/cgi-bin/op/op_custom_table.cgi?obsid=on&obsid_col=1&obsid_from=635&obsid_to=635&issues=on&issues_col=2&issue_all=on&order_one=ObsID&tab_del=Tab-delimited
-
-"""
+    if "NO_COLOR" not in os.environ and sys.stdout.isatty():
+        return True
+    return False
 
 
 def fmt_keyvalue_pair(key, keyvals, name, post="", eqls=":"):
@@ -45,7 +44,10 @@ def fmt_keyvalue_pair(key, keyvals, name, post="", eqls=":"):
     if key not in keyvals or keyvals[key] is None:
         return ""
 
-    fmt_line = "  \033[36m{0:>22s}\033[0m {1} \033[33m{2} {3}\033[0m\n"
+    if colorize():
+        fmt_line = "  \033[36m{0:>22s}\033[0m {1} \033[33m{2} {3}\033[0m\n"
+    else:
+        fmt_line = "  {0:>22s} {1} {2} {3}\n"
 
     return fmt_line.format(name, eqls, keyvals[key], post)
 
@@ -223,12 +225,16 @@ def get_keys_from_ocat(obsid, getlist):
 
         if "title" in tab:
             from textwrap import fill
-            tab["title"] = fill(tab["title"].strip(), 80,
+            tab["title"] = fill(tab["title"].strip().title(), 80,
                                 subsequent_indent=" "*27,
                                 initial_indent=" "*27).lstrip()
 
         if "status" in tab and tab["status"] == "archived":
-            fmt_line = "\033[4mhttps://cxc.cfa.harvard.edu/cdaftp/byobsid/{}/{}/\033[0m"
+            if colorize():
+                # underline URL
+                fmt_line = "\033[4mhttps://cxc.cfa.harvard.edu/cdaftp/byobsid/{}/{}/\033[0m"
+            else:
+                fmt_line = "https://cxc.cfa.harvard.edu/cdaftp/byobsid/{}/{}/"
             tab["url"] = fmt_line.format(tab["obs_id"][-1], tab["obs_id"])
 
         if "type" in tab:
@@ -247,6 +253,8 @@ def get_keys_from_ocat(obsid, getlist):
     # TODO: HRC blank enabled
     # TODO: acis PHA filters
     # TODO: acis windows
+    # TODO: issues table?
+    # TODO: vv comments?
 
     page = make_url_request(resource, {"obsid": obsid, "format": "text",
                                        "outputCoordUnits": "decimal"})
@@ -348,12 +356,18 @@ def make_pretty(retvals):
 
     if retvals["title"]:
         from textwrap import fill
-        retvals["title"] = fill(retvals["title"].strip(), 80,
+        retvals["title"] = fill(retvals["title"].strip().title(), 80,
                                 subsequent_indent=" "*27,
                                 initial_indent=" "*27).lstrip()
 
     if retvals["dtcor"]:
         retvals["dtcor"] = "{:.3g}".format(retvals["dtcor"])
+
+    if retvals["readmode"]:
+        human = {'TE': 'TE - Timed Exposure',
+                 'CC': 'CC - Continuous Clocking'}
+        if retvals["readmode"] in human:
+            retvals["readmode"] = human[retvals["readmode"]]
 
     if True:
         from coords.format import deg2ra, deg2dec
