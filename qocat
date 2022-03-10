@@ -90,7 +90,7 @@ def get_summary(retvals):
     retstr += fmt_keyvalue_pair("sim", retvals, "SIM Location", post="[mm]")
     retstr += fmt_keyvalue_pair("soff", retvals, "Mean SIM offsets", post="[mm, mm, deg]")
     retstr += fmt_keyvalue_pair("status", retvals, "Archive Status")
-    retstr += fmt_keyvalue_pair("public_avail", retvals, "Publically Available")
+    retstr += fmt_keyvalue_pair("public_avail", retvals, "Publicly Available")
     retstr += fmt_keyvalue_pair("url", retvals, "URL")
     retstr += fmt_keyvalue_pair("proposal_text", retvals, "Proposal Abstract")
 
