@@ -185,7 +185,11 @@ def get_keys_from_ocat(obsid, getlist):
         assert len(begin) == 1
 
         begin_idx = pp.index(begin[0])
-        prop = pp[begin_idx+2]
+        prop = ""
+        idx = begin_idx+2
+        while not pp[idx].endswith("</td>"):
+            prop = prop + " " + pp[idx]
+            idx += 1
         prop = fill(prop.strip(), 80, subsequent_indent=" "*27,
                     initial_indent=" "*27).lstrip()
 
